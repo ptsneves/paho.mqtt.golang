@@ -27,6 +27,10 @@ type baseToken struct {
 	err      error
 }
 
+func newBaseToken() baseToken {
+	return baseToken{complete: make(chan struct{})}
+}
+
 // Wait implements the Token Wait method.
 func (b *baseToken) Wait() bool {
 	<-b.complete

@@ -68,15 +68,15 @@ type tokenCompletor interface {
 func newToken(tType byte) tokenCompletor {
 	switch tType {
 	case packets.Connect:
-		return &ConnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &ConnectToken{baseToken: newBaseToken()}
 	case packets.Subscribe:
-		return &SubscribeToken{baseToken: baseToken{complete: make(chan struct{})}, subResult: make(map[string]byte)}
+		return &SubscribeToken{baseToken: newBaseToken(), subResult: make(map[string]byte)}
 	case packets.Publish:
-		return &PublishToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &PublishToken{baseToken: newBaseToken()}
 	case packets.Unsubscribe:
-		return &UnsubscribeToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &UnsubscribeToken{baseToken: newBaseToken()}
 	case packets.Disconnect:
-		return &DisconnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &DisconnectToken{baseToken: newBaseToken()}
 	}
 	return nil
 }
