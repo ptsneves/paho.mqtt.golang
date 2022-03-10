@@ -127,13 +127,25 @@ type SubscribeToken struct {
 	messageID uint16
 }
 
+func (s *SubscribeToken) SetSubResult(n map[string]byte) {
+	s.m.Lock()
+	defer s.m.Unlock()
+	for k, v := range n {
+		s.subResult[k] = v
+	}
+}
+
 // Result returns a map of topics that were subscribed to along with
 // the matching return code from the broker. This is either the Qos
 // value of the subscription or an error code.
 func (s *SubscribeToken) Result() map[string]byte {
 	s.m.RLock()
 	defer s.m.RUnlock()
-	return s.subResult
+	r := make(map[string]byte, len(s.subResult))
+	for k, v := range s.subResult {
+		r[k] = v
+	}
+	return r
 }
 
 // UnsubscribeToken is an extension of Token containing the extra fields
