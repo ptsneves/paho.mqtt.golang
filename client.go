@@ -143,9 +143,11 @@ type client struct {
 	conn   net.Conn   // the network connection, must only be set with connMu locked (only used when starting/stopping workers)
 	connMu sync.Mutex // mutex for the connection (again only used in two functions)
 
-	stop         chan struct{}  // Closed to request that workers stop
-	workers      sync.WaitGroup // used to wait for workers to complete (ping, keepalive, errwatch, resume)
-	commsStopped chan struct{}  // closed when the comms routines have stopped (kept running until after workers have closed to avoid deadlocks)
+	stop          chan struct{}  // Closed to request that workers stop
+	workers       sync.WaitGroup // used to wait for workers to complete (ping, keepalive, errwatch, resume)
+	commsStopped  chan struct{}  // closed when the comms routines have stopped (kept running until after workers have closed to avoid deadlocks)
+	context context.Context
+	contextCancel context.CancelFunc
 }
 
 // NewClient will create an MQTT v3.1.1 client with all of the options specified
@@ -155,6 +157,12 @@ type client struct {
 func NewClient(o *ClientOptions) Client {
 	c := &client{}
 	c.options = *o
+
+	if c.options.parentContext == nil {
+		c.context, c.contextCancel = context.WithCancel(context.Background())
+	} else {
+		c.context, c.contextCancel = context.WithCancel(*c.options.parentContext)
+	}
 
 	if c.options.Store == nil {
 		c.options.Store = NewMemoryStore()
@@ -250,7 +258,7 @@ var ErrNotConnected = errors.New("not Connected")
 // routes (or a DefaultPublishHandler) prior to calling Connect()
 // because queued messages may be delivered immediately post connection
 func (c *client) Connect() Token {
-	t := newToken(packets.Connect).(*ConnectToken)
+	t := newToken(packets.Connect, c.context).(*ConnectToken)
 	DEBUG.Println(CLI, "Connect()")
 
 	if c.options.ConnectRetry && atomic.LoadUint32(&c.status) != disconnected {
@@ -464,7 +472,7 @@ func (c *client) Disconnect(quiesce uint) {
 
 	DEBUG.Println(CLI, "disconnecting")
 	dm := packets.NewControlPacket(packets.Disconnect).(*packets.DisconnectPacket)
-	dt := newToken(packets.Disconnect)
+	dt := newToken(packets.Disconnect, c.context)
 	select {
 	case c.oboundP <- &PacketAndToken{p: dm, t: dt}:
 		// wait for work to finish, or quiesce time consumed
@@ -702,7 +710,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 // to the specified topic.
 // Returns a token to track delivery of the message to the broker
 func (c *client) Publish(topic string, qos byte, retained bool, payload interface{}) Token {
-	token := newToken(packets.Publish).(*PublishToken)
+	token := newToken(packets.Publish, c.context).(*PublishToken)
 	DEBUG.Println(CLI, "enter Publish")
 	switch {
 	case !c.IsConnected():
@@ -766,7 +774,7 @@ func (c *client) Publish(topic string, qos byte, retained bool, payload interfac
 // a new go routine.
 // callback must be safe for concurrent use by multiple goroutines.
 func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Token {
-	token := newToken(packets.Subscribe).(*SubscribeToken)
+	token := newToken(packets.Subscribe, c.context).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter Subscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
@@ -850,7 +858,7 @@ func (c *client) Subscribe(topic string, qos byte, callback MessageHandler) Toke
 // callback must be safe for concurrent use by multiple goroutines.
 func (c *client) SubscribeMultiple(filters map[string]byte, callback MessageHandler) Token {
 	var err error
-	token := newToken(packets.Subscribe).(*SubscribeToken)
+	token := newToken(packets.Subscribe, c.context).(*SubscribeToken)
 	DEBUG.Println(CLI, "enter SubscribeMultiple")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)
@@ -990,7 +998,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 				if subscription {
 					DEBUG.Println(STR, fmt.Sprintf("loaded pending subscribe (%d)", details.MessageID))
 					subPacket := packet.(*packets.SubscribePacket)
-					token := newToken(packets.Subscribe).(*SubscribeToken)
+					token := newToken(packets.Subscribe, c.context).(*SubscribeToken)
 					token.messageID = details.MessageID
 					token.subs = append(token.subs, subPacket.Topics...)
 					c.claimID(token, details.MessageID)
@@ -1006,7 +1014,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 			case *packets.UnsubscribePacket:
 				if subscription {
 					DEBUG.Println(STR, fmt.Sprintf("loaded pending unsubscribe (%d)", details.MessageID))
-					token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
+					token := newToken(packets.Unsubscribe, c.context).(*UnsubscribeToken)
 					select {
 					case c.oboundP <- &PacketAndToken{p: packet, t: token}:
 					case <-c.stop:
@@ -1034,7 +1042,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 				if p.Qos != 0 { // spec: The DUP flag MUST be set to 0 for all QoS 0 messages
 					p.Dup = true
 				}
-				token := newToken(packets.Publish).(*PublishToken)
+				token := newToken(packets.Publish, c.context).(*PublishToken)
 				token.messageID = details.MessageID
 				c.claimID(token, details.MessageID)
 				DEBUG.Println(STR, fmt.Sprintf("loaded pending publish (%d)", details.MessageID))
@@ -1074,7 +1082,7 @@ func (c *client) resume(subscription bool, ibound chan packets.ControlPacket) {
 // Messages published to those topics from other clients will no longer be
 // received.
 func (c *client) Unsubscribe(topics ...string) Token {
-	token := newToken(packets.Unsubscribe).(*UnsubscribeToken)
+	token := newToken(packets.Unsubscribe, c.context).(*UnsubscribeToken)
 	DEBUG.Println(CLI, "enter Unsubscribe")
 	if !c.IsConnected() {
 		token.setError(ErrNotConnected)

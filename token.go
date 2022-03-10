@@ -17,6 +17,7 @@
 package mqtt
 
 import (
+	"context"
 	"time"
 
 	"github.com/eclipse/paho.mqtt.golang/packets"
@@ -65,18 +66,18 @@ type tokenCompletor interface {
 	flowComplete()
 }
 
-func newToken(tType byte) tokenCompletor {
+func newToken(tType byte, ctx context.Context) tokenCompletor {
 	switch tType {
 	case packets.Connect:
-		return &ConnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &ConnectToken{baseToken: newBaseToken(ctx)}
 	case packets.Subscribe:
-		return &SubscribeToken{baseToken: baseToken{complete: make(chan struct{})}, subResult: make(map[string]byte)}
+		return &SubscribeToken{baseToken: newBaseToken(ctx), subResult: make(map[string]byte)}
 	case packets.Publish:
-		return &PublishToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &PublishToken{baseToken: newBaseToken(ctx)}
 	case packets.Unsubscribe:
-		return &UnsubscribeToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &UnsubscribeToken{baseToken: newBaseToken(ctx)}
 	case packets.Disconnect:
-		return &DisconnectToken{baseToken: baseToken{complete: make(chan struct{})}}
+		return &DisconnectToken{baseToken: newBaseToken(ctx)}
 	}
 	return nil
 }

@@ -32,7 +32,7 @@ func TestWaitTimeout(t *testing.T) {
 	// Now lets confirm that WaitTimeout returns
 	// setError() grabs the mutex which previously caused issues
 	// when there is a result (it returns true in this case)
-	b = baseToken{complete: make(chan struct{})}
+	b = newBaseToken()
 	go func(bt *baseToken) {
 		bt.setError(errors.New("test error"))
 	}(&b)

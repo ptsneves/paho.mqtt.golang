@@ -17,48 +17,54 @@
 package mqtt
 
 import (
+	"context"
+	"errors"
 	"sync"
 	"time"
 )
 
 type baseToken struct {
-	m        sync.RWMutex
-	complete chan struct{}
-	err      error
+	m       sync.RWMutex
+	ctx     context.Context
+	cancelF context.CancelFunc
+	err     error
+}
+
+func newBaseToken(ctx context.Context) baseToken {
+	ctx, cancelF := context.WithCancel(ctx)
+	return baseToken{
+		ctx:     ctx,
+		cancelF: cancelF,
+	}
 }
 
 // Wait implements the Token Wait method.
 func (b *baseToken) Wait() bool {
-	<-b.complete
+	<-b.ctx.Done()
 	return true
 }
 
 // WaitTimeout implements the Token WaitTimeout method.
 func (b *baseToken) WaitTimeout(d time.Duration) bool {
-	timer := time.NewTimer(d)
+	b.ctx.Deadline()
+	ctxTimeout, timeoutCancelF := context.WithTimeout(b.ctx, d)
+	defer timeoutCancelF()
 	select {
-	case <-b.complete:
-		if !timer.Stop() {
-			<-timer.C
+	case <-ctxTimeout.Done():
+		if errors.Is(ctxTimeout.Err(), context.DeadlineExceeded) {
+			return false
 		}
-		return true
-	case <-timer.C:
 	}
-
-	return false
+	return true
 }
 
 // Done implements the Token Done method.
 func (b *baseToken) Done() <-chan struct{} {
-	return b.complete
+	return b.ctx.Done()
 }
 
 func (b *baseToken) flowComplete() {
-	select {
-	case <-b.complete:
-	default:
-		close(b.complete)
-	}
+	b.cancelF()
 }
 
 func (b *baseToken) Error() error {
@@ -70,6 +76,6 @@ func (b *baseToken) Error() error {
 func (b *baseToken) setError(e error) {
 	b.m.Lock()
 	b.err = e
-	b.flowComplete()
 	b.m.Unlock()
+	b.flowComplete()
 }

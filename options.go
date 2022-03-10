@@ -22,6 +22,7 @@
 package mqtt
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -104,6 +105,7 @@ type ClientOptions struct {
 	MaxResumePubInFlight    int // // 0 = no limit; otherwise this is the maximum simultaneous messages sent while resuming
 	Dialer                  *net.Dialer
 	CustomOpenConnectionFn  OpenConnectionFunc
+	parentContext           *context.Context
 }
 
 // NewClientOptions will create a new ClientClientOptions type with some
@@ -147,6 +149,16 @@ func NewClientOptions() *ClientOptions {
 		WebsocketOptions:        &WebsocketOptions{},
 		Dialer:                  &net.Dialer{Timeout: 30 * time.Second},
 		CustomOpenConnectionFn:  nil,
+		parentContext:           nil,
+	}
+	return o
+}
+
+func (o *ClientOptions) SetContext(ctx context.Context) *ClientOptions {
+	if o.parentContext == nil {
+		o.parentContext = &ctx
+	} else {
+		ERROR.Println(CLI, "Refusing to set context when one was already set")
 	}
 	return o
 }
