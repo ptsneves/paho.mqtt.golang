@@ -227,15 +227,10 @@ func (c *client) IsConnectionOpen() bool {
 }
 
 func (c *client) connectionStatus() uint32 {
-	c.RLock()
-	defer c.RUnlock()
-	status := atomic.LoadUint32(&c.status)
-	return status
+	return atomic.LoadUint32(&c.status)
 }
 
 func (c *client) setConnectionStatus(status uint32) {
-	c.Lock()
-	defer c.Unlock()
 	atomic.StoreUint32(&c.status, status)
 }
 
