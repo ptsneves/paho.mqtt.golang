@@ -686,7 +686,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 
 	// We stop all non-comms related workers first (ping, keepalive, errwatch, resume etc) so they don't get blocked waiting on comms
 	close(c.stop)     // Signal for workers to stop
-	c.conn.Close()    // Possible that this is already closed but no harm in closing again
+	c.conn.Close()
 	c.conn = nil      // Important that this is the only place that this is set to nil
 	c.connMu.Unlock() // As the connection is now nil we can unlock the mu (allowing subsequent calls to exit immediately)
 
