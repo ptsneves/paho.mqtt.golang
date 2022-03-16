@@ -128,8 +128,8 @@ type client struct {
 	lastReceived    atomic.Value // time.Time - the last time a packet was successfully received from network
 	pingOutstanding int32        // set to 1 if a ping has been sent but response not ret received
 
-	status       uint32 // see const definitions at top of file for possible values
-	sync.RWMutex        // Protects the above two variables (note: atomic writes are also used somewhat inconsistently)
+	status       atomic.Value // see const definitions at top of file for possible values
+	sync.RWMutex              // Protects the above two variables (note: atomic writes are also used somewhat inconsistently)
 
 	messageIds // effectively a map from message id to token completor
 
@@ -219,11 +219,15 @@ func (c *client) IsConnectionOpen() bool {
 }
 
 func (c *client) connectionStatus() uint32 {
-	return atomic.LoadUint32(&c.status)
+	return c.status.Load().(uint32)
 }
 
 func (c *client) setConnectionStatus(status uint32) {
-	atomic.StoreUint32(&c.status, status)
+	c.status.Store(status)
+}
+
+func (c *client) swapConnectionStatus(newStatus uint32) uint32 {
+	return c.status.Swap(newStatus).(uint32)
 }
 
 // ErrNotConnected is the error returned from function calls that are
@@ -440,11 +444,7 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 // `SetAutoReconnect` and/or `SetConnectRetry`options instead of implementing this yourself.
 func (c *client) Disconnect(quiesce uint) {
 	defer c.disconnect()
-
-	status := c.connectionStatus()
-	c.setConnectionStatus(disconnected)
-
-	if status != connected {
+	if c.swapConnectionStatus(disconnected) != connected {
 		WARN.Println(CLI, "Disconnect() called but not connected (disconnected/reconnecting)")
 		return
 	}
