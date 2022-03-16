@@ -126,7 +126,7 @@ func Test_Disconnect(t *testing.T) {
 	go func() {
 		c.Disconnect(250)
 		cli := c.(*client)
-		cli.status = connected
+		cli.setConnectionStatus(connected)
 		c.Disconnect(250)
 		close(disconnectC)
 	}()
