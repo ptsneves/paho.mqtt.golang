@@ -543,7 +543,6 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 		atomic.StoreInt32(&c.pingOutstanding, 0)
 		c.lastReceived.Store(time.Now())
 		c.lastSent.Store(time.Now())
-		c.workers.Add(1)
 		go keepalive(c, conn)
 	}
 
