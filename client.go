@@ -499,9 +499,8 @@ func (c *client) forceDisconnect() {
 
 // disconnect cleans up after a final disconnection (user requested so no auto reconnection)
 func (c *client) disconnect() {
-	done := c.stopCommsWorkers()
-	if done != nil {
-		<-done // Wait until the disconnect is complete (to limit chance that another connection will be started)
+	if c.stopNonCommsWorkers() {
+		<-c.commsStopped // Wait until the disconnect is complete (to limit chance that another connection will be started)
 		DEBUG.Println(CLI, "forcefully disconnecting")
 		c.messageIds.cleanUp()
 		DEBUG.Println(CLI, "disconnected")
@@ -516,11 +515,11 @@ func (c *client) internalConnLost(err error) {
 	// (including after sending a DisconnectPacket) as such we only do cleanup etc if the
 	// routines were actually running and are not being disconnected at users request
 	DEBUG.Println(CLI, "internalConnLost called")
-	stopDone := c.stopCommsWorkers()
-	if stopDone != nil { // stopDone will be nil if workers already in the process of stopping or stopped
+
+	if c.stopNonCommsWorkers() { // stopDone will be false if workers already in the process of stopping or stopped
 		go func() {
 			DEBUG.Println(CLI, "internalConnLost waiting on workers")
-			<-stopDone
+			<-c.commsStopped
 			DEBUG.Println(CLI, "internalConnLost workers stopped")
 			// It is possible that Disconnect was called which led to this error so reconnection depends upon status
 			reconnect := c.options.AutoReconnect && c.connectionStatus() > connecting
@@ -658,6 +657,9 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 				continue
 			}
 		}
+
+		DEBUG.Println(CLI, "waiting for workers")
+		c.workers.Wait()
 		DEBUG.Println(CLI, "incoming comms goroutine done")
 		close(c.commsStopped)
 	}()
@@ -668,14 +670,14 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 // stopWorkersAndComms - Cleanly shuts down worker go routines (including the comms routines) and waits until everything has stopped
 // Returns nil it workers did not need to be stopped; otherwise returns a channel which will be closed when the stop is complete
 // Note: This may block so run as a go routine if calling from any of the comms routines
-func (c *client) stopCommsWorkers() chan struct{} {
-	DEBUG.Println(CLI, "stopCommsWorkers called")
+func (c *client) stopNonCommsWorkers() bool {
+	DEBUG.Println(CLI, "stopNonCommsWorkers called")
 	// It is possible that this function will be called multiple times simultaneously due to the way things get shutdown
 	c.connMu.Lock()
+	defer c.connMu.Unlock()
 	if c.conn == nil {
-		DEBUG.Println(CLI, "stopCommsWorkers done (not running)")
-		c.connMu.Unlock()
-		return nil
+		DEBUG.Println(CLI, "stopNonCommsWorkers done (not running)")
+		return false
 	}
 
 	// It is important that everything is stopped in the correct order to avoid deadlocks. The main issue here is
@@ -685,25 +687,11 @@ func (c *client) stopCommsWorkers() chan struct{} {
 	// channels which will allow the comms routines to exit.
 
 	// We stop all non-comms related workers first (ping, keepalive, errwatch, resume etc) so they don't get blocked waiting on comms
-	close(c.stop)     // Signal for workers to stop
+	close(c.stop) // Signal for workers to stop
 	c.conn.Close()
 	c.conn = nil      // Important that this is the only place that this is set to nil
-	c.connMu.Unlock() // As the connection is now nil we can unlock the mu (allowing subsequent calls to exit immediately)
 
-	doneChan := make(chan struct{})
-
-	go func() {
-		DEBUG.Println(CLI, "stopCommsWorkers waiting for workers")
-		c.workers.Wait()
-
-		// Stopping the workers will allow the comms routines to exit; we wait for these to complete
-		DEBUG.Println(CLI, "stopCommsWorkers waiting for comms")
-		<-c.commsStopped // wait for comms routine to stop
-
-		DEBUG.Println(CLI, "stopCommsWorkers done")
-		close(doneChan)
-	}()
-	return doneChan
+	return true
 }
 
 // Publish will publish a message with the specified QoS and content
