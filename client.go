@@ -233,7 +233,7 @@ func (c *client) connectionStatus() uint32 {
 	return status
 }
 
-func (c *client) setConnected(status uint32) {
+func (c *client) setConnectionStatus(status uint32) {
 	c.Lock()
 	defer c.Unlock()
 	atomic.StoreUint32(&c.status, status)
@@ -267,7 +267,7 @@ func (c *client) Connect() Token {
 	if c.options.ConnectRetry {
 		c.reserveStoredPublishIDs() // Reserve IDs to allow publish before connect complete
 	}
-	c.setConnected(connecting)
+	c.setConnectionStatus(connecting)
 
 	go func() {
 		if len(c.options.Servers) == 0 {
@@ -290,7 +290,7 @@ func (c *client) Connect() Token {
 				}
 			}
 			ERROR.Println(CLI, "Failed to connect to a broker")
-			c.setConnected(disconnected)
+			c.setConnectionStatus(disconnected)
 			c.persist.Close()
 			t.returnCode = rc
 			t.setError(err)
@@ -455,7 +455,7 @@ func (c *client) Disconnect(quiesce uint) {
 	defer c.disconnect()
 
 	status := atomic.LoadUint32(&c.status)
-	c.setConnected(disconnected)
+	c.setConnectionStatus(disconnected)
 
 	if status != connected {
 		WARN.Println(CLI, "Disconnect() called but not connected (disconnected/reconnecting)")
@@ -484,7 +484,7 @@ func (c *client) forceDisconnect() {
 		WARN.Println(CLI, "already disconnected")
 		return
 	}
-	c.setConnected(disconnected)
+	c.setConnectionStatus(disconnected)
 	DEBUG.Println(CLI, "forcefully disconnecting")
 	c.disconnect()
 }
@@ -522,10 +522,10 @@ func (c *client) internalConnLost(err error) {
 				c.messageIds.cleanUpSubscribe() // completes SUB/UNSUB tokens
 			}
 			if reconnect {
-				c.setConnected(reconnecting)
+				c.setConnectionStatus(reconnecting)
 				go c.reconnect()
 			} else {
-				c.setConnected(disconnected)
+				c.setConnectionStatus(disconnected)
 			}
 			if c.options.OnConnectionLost != nil {
 				go c.options.OnConnectionLost(c, err)
@@ -564,7 +564,7 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 	c.workers.Add(1) // Done will be called when ackOut is closed
 	ackOut := c.msgRouter.matchAndDispatch(incomingPubChan, c.options.Order, c)
 
-	c.setConnected(connected)
+	c.setConnectionStatus(connected)
 	DEBUG.Println(CLI, "client is connected/reconnected")
 	if c.options.OnConnect != nil {
 		go c.options.OnConnect(c)
