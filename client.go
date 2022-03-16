@@ -494,32 +494,34 @@ func (c *client) internalConnLost(err error) {
 	// (including after sending a DisconnectPacket) as such we only do cleanup etc if the
 	// routines were actually running and are not being disconnected at users request
 	DEBUG.Println(CLI, "internalConnLost called")
-
-	if c.stopNonCommsWorkers() { // stopDone will be false if workers already in the process of stopping or stopped
-		go func() {
-			DEBUG.Println(CLI, "internalConnLost waiting on workers")
-			<-c.commsStopped
-			DEBUG.Println(CLI, "internalConnLost workers stopped")
-			// It is possible that Disconnect was called which led to this error so reconnection depends upon status
-			reconnect := c.options.AutoReconnect && c.connectionStatus() > connecting
-
-			if c.options.CleanSession && !reconnect {
-				c.messageIds.cleanUp() // completes PUB/SUB/UNSUB tokens
-			} else if !c.options.ResumeSubs {
-				c.messageIds.cleanUpSubscribe() // completes SUB/UNSUB tokens
-			}
-			if reconnect {
-				c.setConnectionStatus(reconnecting)
-				go c.reconnect()
-			} else {
-				c.setConnectionStatus(disconnected)
-			}
-			if c.options.OnConnectionLost != nil {
-				go c.options.OnConnectionLost(c, err)
-			}
-			DEBUG.Println(CLI, "internalConnLost complete")
-		}()
+	if !c.stopNonCommsWorkers() {
+		return
 	}
+
+	// stopDone will be false if workers already in the process of stopping or stopped
+	go func() {
+		DEBUG.Println(CLI, "internalConnLost waiting on workers")
+		<-c.commsStopped
+		DEBUG.Println(CLI, "internalConnLost workers stopped")
+		// It is possible that Disconnect was called which led to this error so reconnection depends upon status
+		reconnect := c.options.AutoReconnect && c.connectionStatus() > connecting
+
+		if c.options.CleanSession && !reconnect {
+			c.messageIds.cleanUp() // completes PUB/SUB/UNSUB tokens
+		} else if !c.options.ResumeSubs {
+			c.messageIds.cleanUpSubscribe() // completes SUB/UNSUB tokens
+		}
+		if reconnect {
+			c.setConnectionStatus(reconnecting)
+			go c.reconnect()
+		} else {
+			c.setConnectionStatus(disconnected)
+		}
+		if c.options.OnConnectionLost != nil {
+			go c.options.OnConnectionLost(c, err)
+		}
+		DEBUG.Println(CLI, "internalConnLost complete")
+	}()
 }
 
 // startCommsWorkers is called when the connection is up.
