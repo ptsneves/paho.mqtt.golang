@@ -30,6 +30,7 @@ import (
 // keepalive - Send ping when connection unused for set period
 // connection passed in to avoid race condition on shutdown
 func keepalive(c *client, conn io.Writer) {
+	c.workers.Add(1)
 	defer c.workers.Done()
 	DEBUG.Println(PNG, "keepalive starting")
 	var checkInterval int64
