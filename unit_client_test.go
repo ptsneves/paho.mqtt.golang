@@ -85,7 +85,7 @@ func Test_isConnection(t *testing.T) {
 	ops := NewClientOptions()
 	c := NewClient(ops)
 
-	c.(*client).setConnected(connected)
+	c.(*client).setConnectionStatus(connected)
 	if !c.IsConnectionOpen() {
 		t.Fail()
 	}
@@ -95,15 +95,15 @@ func Test_isConnectionOpenNegative(t *testing.T) {
 	ops := NewClientOptions()
 	c := NewClient(ops)
 
-	c.(*client).setConnected(reconnecting)
+	c.(*client).setConnectionStatus(reconnecting)
 	if c.IsConnectionOpen() {
 		t.Fail()
 	}
-	c.(*client).setConnected(connecting)
+	c.(*client).setConnectionStatus(connecting)
 	if c.IsConnectionOpen() {
 		t.Fail()
 	}
-	c.(*client).setConnected(disconnected)
+	c.(*client).setConnectionStatus(disconnected)
 	if c.IsConnectionOpen() {
 		t.Fail()
 	}
