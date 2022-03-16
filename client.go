@@ -650,6 +650,9 @@ func (c *client) startCommsWorkers(conn net.Conn, inboundFromStore <-chan packet
 				continue
 			}
 		}
+
+		DEBUG.Println(CLI, "waiting for workers")
+		c.workers.Wait()
 		DEBUG.Println(CLI, "incoming comms goroutine done")
 		close(c.commsStopped)
 	}()
@@ -682,20 +685,7 @@ func (c *client) stopCommsWorkers() chan struct{} {
 	c.conn = nil      // Important that this is the only place that this is set to nil
 	c.connMu.Unlock() // As the connection is now nil we can unlock the mu (allowing subsequent calls to exit immediately)
 
-	doneChan := make(chan struct{})
-
-	go func() {
-		DEBUG.Println(CLI, "stopCommsWorkers waiting for workers")
-		c.workers.Wait()
-
-		// Stopping the workers will allow the comms routines to exit; we wait for these to complete
-		DEBUG.Println(CLI, "stopCommsWorkers waiting for comms")
-		<-c.commsStopped // wait for comms routine to stop
-
-		DEBUG.Println(CLI, "stopCommsWorkers done")
-		close(doneChan)
-	}()
-	return doneChan
+	return c.commsStopped
 }
 
 // Publish will publish a message with the specified QoS and content
