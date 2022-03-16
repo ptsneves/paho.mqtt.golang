@@ -169,7 +169,7 @@ func NewClient(o *ClientOptions) Client {
 		c.options.protocolVersionExplicit = false
 	}
 	c.persist = c.options.Store
-	c.status = disconnected
+	c.setConnectionStatus(disconnected)
 	c.messageIds = messageIds{index: make(map[uint16]tokenCompletor)}
 	c.msgRouter = newRouter()
 	c.msgRouter.setDefaultHandler(c.options.DefaultPublishHandler)
@@ -199,7 +199,7 @@ func (c *client) AddRoute(topic string, callback MessageHandler) {
 func (c *client) IsConnected() bool {
 	c.RLock()
 	defer c.RUnlock()
-	status := atomic.LoadUint32(&c.status)
+	status := c.connectionStatus()
 	switch {
 	case status == connected:
 		return true
@@ -215,15 +215,7 @@ func (c *client) IsConnected() bool {
 // IsConnectionOpen return a bool signifying whether the client has an active
 // connection to mqtt broker, i.e not in disconnected or reconnect mode
 func (c *client) IsConnectionOpen() bool {
-	c.RLock()
-	defer c.RUnlock()
-	status := atomic.LoadUint32(&c.status)
-	switch {
-	case status == connected:
-		return true
-	default:
-		return false
-	}
+	return c.connectionStatus() == connected
 }
 
 func (c *client) connectionStatus() uint32 {
@@ -248,7 +240,7 @@ func (c *client) Connect() Token {
 	t := newToken(packets.Connect).(*ConnectToken)
 	DEBUG.Println(CLI, "Connect()")
 
-	if c.options.ConnectRetry && atomic.LoadUint32(&c.status) != disconnected {
+	if c.options.ConnectRetry && c.connectionStatus() != disconnected {
 		// if in any state other than disconnected and ConnectRetry is
 		// enabled then the connection will come up automatically
 		// client can assume connection is up
@@ -280,7 +272,7 @@ func (c *client) Connect() Token {
 				DEBUG.Println(CLI, "Connect failed, sleeping for", int(c.options.ConnectRetryInterval.Seconds()), "seconds and will then retry, error:", err.Error())
 				time.Sleep(c.options.ConnectRetryInterval)
 
-				if atomic.LoadUint32(&c.status) == connecting {
+				if c.connectionStatus() == connecting {
 					goto RETRYCONN
 				}
 			}
@@ -337,7 +329,7 @@ func (c *client) reconnect() {
 			sleep = c.options.MaxReconnectInterval
 		}
 		// Disconnect may have been called
-		if atomic.LoadUint32(&c.status) == disconnected {
+		if c.connectionStatus() == disconnected {
 			break
 		}
 	}
@@ -449,7 +441,7 @@ func (c *client) attemptConnection() (net.Conn, byte, bool, error) {
 func (c *client) Disconnect(quiesce uint) {
 	defer c.disconnect()
 
-	status := atomic.LoadUint32(&c.status)
+	status := c.connectionStatus()
 	c.setConnectionStatus(disconnected)
 
 	if status != connected {
