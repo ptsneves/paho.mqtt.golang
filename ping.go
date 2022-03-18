@@ -27,21 +27,22 @@ import (
 	"github.com/eclipse/paho.mqtt.golang/packets"
 )
 
+func pingCheckInterval(options ClientOptions) int64 {
+	if options.KeepAlive > 10 {
+		return 5
+	}
+	return options.KeepAlive / 2
+}
+
 // keepalive - Send ping when connection unused for set period
 // connection passed in to avoid race condition on shutdown
 func keepalive(c *client, conn io.Writer) {
 	c.workers.Add(1)
 	defer c.workers.Done()
 	DEBUG.Println(PNG, "keepalive starting")
-	var checkInterval int64
 	var pingSent time.Time
 
-	if c.options.KeepAlive > 10 {
-		checkInterval = 5
-	} else {
-		checkInterval = c.options.KeepAlive / 2
-	}
-
+	checkInterval := pingCheckInterval(c.options)
 	intervalTicker := time.NewTicker(time.Duration(checkInterval * int64(time.Second)))
 	defer intervalTicker.Stop()
 
